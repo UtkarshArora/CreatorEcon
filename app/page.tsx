@@ -419,6 +419,18 @@ function EvidenceRow({ e }: { e: Evidence }) {
       <a className="src" href={e.url} target="_blank" rel="noreferrer">
         ↗ {host(e.url)}{when(e.date) ? ` · ${when(e.date)}` : ""}
       </a>
+      {e.alsoReported && e.alsoReported.length > 0 && (
+        <div className="tiny muted" style={{ marginTop: 2 }}>
+          Also reported by{" "}
+          {e.alsoReported.slice(0, 4).map((o, i) => (
+            <span key={o.url}>
+              {i > 0 && ", "}
+              <a href={o.url} target="_blank" rel="noreferrer">{host(o.url)}</a>
+            </span>
+          ))}
+          {e.alsoReported.length > 4 && ` and ${e.alsoReported.length - 4} more`}
+        </div>
+      )}
     </div>
   );
 }

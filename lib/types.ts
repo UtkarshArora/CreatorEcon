@@ -44,6 +44,20 @@ export interface Identity {
   likelyScam: boolean;
 }
 
+export type IssueType =
+  | "creator_nonpayment" // creators/influencers not paid or paid late
+  | "ftc_endorsement" // FTC/regulator action on endorsements, influencer disclosure, fake reviews
+  | "product_recall" // recall or safety ban
+  | "fraud" // fraud, scam or criminal findings against the company
+  | "insolvency" // bankruptcy, shutdown, missed payroll/invoices
+  | "other_lawsuit" // ordinary consumer, privacy, IP, employment, securities suits
+  | "layoffs"
+  | "criticism" // backlash, controversy, bad reviews
+  | "none";
+
+// Issue types that directly put a sponsored creator's money or reputation at risk.
+export const CREATOR_ISSUES: IssueType[] = ["creator_nonpayment", "ftc_endorsement", "product_recall", "fraud", "insolvency"];
+
 export interface Evidence {
   id: string;
   category: CategoryId;
@@ -56,10 +70,13 @@ export interface Evidence {
   aboutBrand: boolean;
   severity: 0 | 1 | 2 | 3;
   claim: string;
-  creatorImpact: boolean; // directly affects a creator working with / paid by the brand
+  creatorImpact: boolean; // directly affects a creator working with / paid by the brand (derived from issueType)
+  issueType: IssueType;
+  story: string; // key shared by all results about the same event
   year: number | null; // year of the reported event
   counted?: 0 | 1 | 2 | 3; // severity after rubric caps (what the verdict used)
   note?: string; // why it was capped
+  alsoReported?: { url: string; date: string | null }[]; // other coverage of the same story
 }
 
 export interface CategoryResult {

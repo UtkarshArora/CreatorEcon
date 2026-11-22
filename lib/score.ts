@@ -2,11 +2,14 @@
 // the verdict itself is computed here so it is consistent run to run.
 import type { CategoryId, CategoryResult, Evidence, Extraction, Identity, Report, Verdict } from "./types";
 import { CATEGORY_META } from "./checks";
+import { CREATOR_ISSUES } from "./types";
 
 const ORDER: CategoryId[] = ["payment", "legal", "finance", "backlash"];
 
 const FORUM = /reddit\.com|quora\.com|forum|community\.|trustpilot|sitejabber|complaintsboard/;
 const RECENT_MONTHS = 18;
+// Only these legal issues can make a brand red; other lawsuits are context.
+const LEGAL_RED: Evidence["issueType"][] = ["ftc_endorsement", "product_recall", "fraud"];
 
 function ageMonths(e: Evidence): number | null {
   const t = Date.parse(e.date ?? "");
@@ -45,13 +48,25 @@ export function countedSeverity(e: Evidence): { counted: Evidence["severity"]; n
 // Money trouble and backlash can raise caution (yellow) but never make a brand red on their own.
 export function buildCategories(evidence: Evidence[], searched: Record<CategoryId, string[]>): CategoryResult[] {
   return ORDER.map((id) => {
-    const ev = evidence
+    const all = evidence
       .filter((e) => e.category === id && e.aboutBrand && e.severity > 0)
       .map((e) => ({ ...e, ...countedSeverity(e) }))
       .sort((a, b) => (b.counted ?? 0) - (a.counted ?? 0) || b.severity - a.severity || (Date.parse(b.date ?? "") || 0) - (Date.parse(a.date ?? "") || 0));
+    // Sites corroborating a recent, creator-relevant problem (all coverage counts as corroboration).
+    const strongAll = all.filter((e) => (e.counted ?? 0) >= 2);
+    const sites = new Set(strongAll.map((e) => hostOf(e.url)));
+    const seriousNews = strongAll.some((e) => e.counted === 3 && !FORUM.test(e.url) && (id !== "legal" || LEGAL_RED.includes(e.issueType)));
+    // Show one row per story, with the other coverage attached. Context-only issues of the same
+    // type (e.g. several non-creator lawsuits) collapse into one row.
+    const byStory = new Map<string, Evidence>();
+    for (const e of all) {
+      const key = CREATOR_ISSUES.includes(e.issueType) && (e.counted ?? 0) >= 2 ? e.story : `context:${e.issueType}`;
+      const top = byStory.get(key);
+      if (!top) byStory.set(key, { ...e, alsoReported: [] });
+      else top.alsoReported!.push({ url: e.url, date: e.date });
+    }
+    const ev = [...byStory.values()];
     const strong = ev.filter((e) => (e.counted ?? 0) >= 2);
-    const sites = new Set(strong.map((e) => hostOf(e.url)));
-    const seriousNews = strong.some((e) => e.counted === 3 && !FORUM.test(e.url));
     let score: CategoryResult["score"] = 0;
     if (strong.length) score = 2;
     else if (ev.length) score = 1;
@@ -67,8 +82,8 @@ export function buildCategories(evidence: Evidence[], searched: Record<CategoryI
         : score === 1
           ? "Only older, minor or non-creator issues. Shown for context."
           : score === 2
-            ? `${strong.length} recent source(s) worth reading before you sign.`
-            : `Serious: ${strong.length} recent source(s) from ${sites.size} site(s) report problems.`;
+            ? `${strong.length} recent issue(s) worth reading before you sign.`
+            : `Serious: ${strong.length} recent issue(s), reported by ${sites.size} site(s).`;
     return { id, name: CATEGORY_META[id].name, score, summary, evidence: ev.slice(0, 5), searched: searched[id] };
   });
 }
@@ -110,7 +125,11 @@ export function decide(
   caution.forEach((c) => reasons.push(`${c.name}: ${c.evidence[0]?.claim ?? c.summary}`));
   idCaution.forEach((f) => reasons.push(f.label));
   if (kind === "thin") reasons.push(identity.officialDomain ? `Only ${mentions} public result(s) mention ${ex.brand}.` : `No official website found for ${ex.brand}.`);
-  if (kind === "clean") reasons.push(`No payment complaints, lawsuits, money trouble or backlash found across ${mentions} live results.`);
+  if (kind === "clean") {
+    reasons.push(`No creator payment problems, scam signals or creator-relevant legal trouble found across ${mentions} live results.`);
+    const ctx = categories.flatMap((c) => c.evidence).find((e) => e.note && e.counted === 1);
+    if (ctx) reasons.push(`Worth knowing (not a sponsorship risk): ${ctx.claim}`);
+  }
 
   const headline =
     kind === "thin"
