@@ -19,6 +19,8 @@ Built at the You.com Creator Economy Hack (Creator Business track).
    - **Green** otherwise. Old news and ordinary big-company lawsuits, layoffs or criticism are shown for context but don't move the verdict, so established brands don't come back red.
    - Every flag cites a link or a quote from the pasted email.
 
+**Gmail add-on:** `gmail-addon/` has an Apps Script add-on that shows the verdict in Gmail's sidebar when you open an email. See its README.
+
 ## You.com endpoints
 
 | Endpoint | What it powers |

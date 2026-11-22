@@ -1,0 +1,23 @@
+{
+  "timeZone": "America/New_York",
+  "runtimeVersion": "V8",
+  "exceptionLogging": "STACKDRIVER",
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/gmail.addons.execute",
+    "https://www.googleapis.com/auth/gmail.addons.current.message.readonly",
+    "https://www.googleapis.com/auth/script.external_request"
+  ],
+  "addOns": {
+    "common": {
+      "name": "BrandCheck",
+      "logoUrl": "https://www.gstatic.com/images/icons/material/system/1x/verified_user_black_48dp.png",
+      "useLocaleFromApp": true,
+      "homepageTrigger": { "runFunction": "onHomepage", "enabled": true }
+    },
+    "gmail": {
+      "contextualTriggers": [
+        { "unconditional": {}, "onTriggerFunction": "onGmailMessage" }
+      ]
+    }
+  }
+}

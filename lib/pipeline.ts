@@ -8,7 +8,7 @@ import { llmAvailable } from "./llm";
 
 type Emit = (e: StreamEvent) => void;
 
-export async function runCheck(input: string, emit: Emit, opts: { force?: boolean } = {}): Promise<Report> {
+export async function runCheck(input: string, emit: Emit, opts: { force?: boolean; fast?: boolean } = {}): Promise<Report> {
   const t0 = Date.now();
   const key = process.env.YDC_API_KEY;
   if (!key) throw new Error("YDC_API_KEY is not set. Add it to .env.local, or try a demo run.");
@@ -32,7 +32,10 @@ export async function runCheck(input: string, emit: Emit, opts: { force?: boolea
 
   // Start the risk searches and overview in parallel with the identity check.
   const searchesP = runCategorySearches(you, extraction);
-  const overviewP = you
+  // fast mode (Gmail add-on, 30s budget): skip the Answer overview and the Contents full-text pass.
+  const overviewP = opts.fast
+    ? Promise.resolve(null)
+    : you
     .answer(
       `What does ${extraction.brand}${site.domain ? ` (${site.domain})` : ""} sell, and in the last 12 months are there reports of it not paying influencers, lawsuits, recalls, layoffs or controversies?`,
       "cited brand overview"
@@ -83,7 +86,7 @@ export async function runCheck(input: string, emit: Emit, opts: { force?: boolea
   step("search", "Searching payment complaints, lawsuits, money trouble, backlash", failures.length === 4 ? "error" : "done", `${hits.length} results`);
 
   step("read", "Reading the top sources in full", "running");
-  const passages = await enrichWithContents(you, hits, extraction.brand);
+  const passages = opts.fast ? new Map<string, string>() : await enrichWithContents(you, hits, extraction.brand);
   step("read", "Reading the top sources in full", "done", `${passages.size} pages`);
 
   step("score", "Scoring with the BrandCheck rubric", "running");
