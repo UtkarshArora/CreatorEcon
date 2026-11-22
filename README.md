@@ -6,7 +6,7 @@ Built at the You.com Creator Economy Hack (Creator Business track).
 
 ## How it works
 
-0. **Or check your inbox.** "Check my inbox" reads unread emails from a dedicated Gmail over IMAP (app password, no OAuth, messages are not marked read) and runs each one through the same check.
+0. **Or check your inbox.** "Check my inbox" reads unread emails from a dedicated Gmail over IMAP (app password, no OAuth, messages are not marked read) and runs each one through the same check. It then writes the verdict back into Gmail: a `BrandCheck/Red|Yellow|Green|Scam|Unknown` label on the original email (IMAP) and the report filed as a reply in the same thread, sent only to the inbox owner (SMTP, same app password).
 1. **Read the deal.** An LLM extracts the brand, sender address, offer and payment terms (rule-based fallback if no LLM key).
 2. **Is the email real?** You.com Search finds the brand's official site. The sender domain is compared with it (free-mail, lookalike or unrelated domain), You.com Search looks for scam reports on the sender domain and past impersonation of the brand, and rules + LLM flag scam patterns in the text (upfront fees, downloads, Telegram/WhatsApp, account codes, urgency). A likely scam returns a red **Possible scam** verdict straight away.
 3. **Parallel risk checks** with You.com Search: Reddit reports of unpaid creators, payment complaints, lawsuits / FTC / recalls (3-year window), layoffs and money trouble (past year), recent backlash (past year).

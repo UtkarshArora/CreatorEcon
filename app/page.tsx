@@ -36,7 +36,7 @@ function saveHistory(h: HistoryItem[]) {
   } catch {}
 }
 
-type InboxItem = { uid: number; from: string; subject: string; date: string | null; input: string; status: "queued" | "checking" | "done" | "error"; report?: Report; error?: string };
+type InboxItem = { uid: number; messageId?: string; gmail?: string; from: string; subject: string; date: string | null; input: string; status: "queued" | "checking" | "done" | "error"; report?: Report; error?: string };
 
 // Runs a check and returns only the final report (used for inbox batch checks).
 async function checkToReport(input: string): Promise<Report> {
@@ -69,6 +69,7 @@ export default function Home() {
   const [inbox, setInbox] = useState<InboxItem[] | null>(null);
   const [inboxMsg, setInboxMsg] = useState<string | null>(null);
   const [inboxBusy, setInboxBusy] = useState(false);
+  const [writeBack, setWriteBack] = useState(true);
 
   async function checkInbox() {
     setInboxBusy(true);
@@ -92,6 +93,12 @@ export default function Home() {
             const r = await checkToReport(it.input);
             update(it.uid, { status: "done", report: r });
             remember(r);
+            if (writeBack) {
+              fetch("/api/inbox/annotate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ uid: it.uid, messageId: it.messageId, subject: it.subject, report: r }) })
+                .then((x) => x.json())
+                .then((a) => update(it.uid, { gmail: [a.label ? `Labeled ${a.label}` : `Label failed: ${a.labelError}`, a.replied ? "report filed in thread" : `report failed: ${a.replyError}`].join(" · ") }))
+                .catch(() => update(it.uid, { gmail: "Gmail write-back failed" }));
+            }
           } catch (e) {
             update(it.uid, { status: "error", error: (e as Error).message });
           }
@@ -259,6 +266,10 @@ export default function Home() {
             {inboxBusy ? "Checking inbox…" : "✉ Check my inbox"}
           </button>
           {inboxMsg ?? "Scan unread sponsorship emails in your connected inbox."}
+          <label style={{ display: "inline-flex", gap: 6, alignItems: "center", marginLeft: "auto" }}>
+            <input type="checkbox" checked={writeBack} onChange={(e) => setWriteBack(e.target.checked)} />
+            Label in Gmail + file report in thread
+          </label>
         </div>
         {inbox && inbox.length > 0 && (
           <div>
@@ -274,6 +285,7 @@ export default function Home() {
                 <div style={{ flex: 1, minWidth: 180 }}>
                   <div className="small"><strong>{it.subject}</strong></div>
                   <div className="tiny muted">{it.from}{it.report ? ` · ${it.report.headline}` : it.error ? ` · ${it.error}` : it.status === "checking" ? " · checking…" : ""}</div>
+                  {it.gmail && <div className="tiny muted">✉ {it.gmail}</div>}
                 </div>
                 {it.report && <button className="btn-ghost" onClick={() => openReport(it.report!)}>Open</button>}
               </div>

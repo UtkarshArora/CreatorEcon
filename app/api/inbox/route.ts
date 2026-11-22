@@ -25,7 +25,7 @@ export async function GET() {
     try {
       const uids = ((await client.search({ seen: false }, { uid: true })) || []) as number[];
       const latest = uids.slice(-8).reverse();
-      const emails: { uid: number; from: string; subject: string; date: string | null; input: string }[] = [];
+      const emails: { uid: number; messageId?: string; from: string; subject: string; date: string | null; input: string }[] = [];
       for (const uid of latest) {
         const msg = await client.fetchOne(String(uid), { source: true }, { uid: true });
         if (!msg || !msg.source) continue;
@@ -33,8 +33,10 @@ export async function GET() {
         const from = parsed.from?.text ?? "";
         const subject = parsed.subject ?? "(no subject)";
         const body = (parsed.text || "").trim().slice(0, 8000);
+        if (parsed.headers.has("x-brandcheck")) continue; // skip reports BrandCheck filed itself
         emails.push({
           uid,
+          messageId: parsed.messageId,
           from,
           subject,
           date: parsed.date ? parsed.date.toISOString() : null,
