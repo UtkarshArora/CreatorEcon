@@ -353,6 +353,12 @@ export default function Home() {
 
 function ReportView({ report, onForce }: { report: Report; onForce: () => void }) {
   const r = report;
+  const [saved, setSaved] = useState<string | null>(null);
+  async function saveDemo() {
+    const res = await fetch("/api/demo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(r) });
+    const j = await res.json().catch(() => ({}));
+    setSaved(j.saved ? `Saved to ${j.saved}` : j.error || "Save failed");
+  }
   const kindLabel = r.verdictKind === "scam" ? "Possible scam" : r.verdictKind === "thin" ? "Not enough info" : r.verdict === "green" ? "Looks safe" : r.verdict === "yellow" ? "Caution" : "High risk";
   return (
     <div className="stack" style={{ marginTop: 16 }}>
@@ -433,6 +439,12 @@ function ReportView({ report, onForce }: { report: Report; onForce: () => void }
               ))}
             </tbody>
           </table>
+          {r.mode !== "cached" && (
+            <div className="row tiny" style={{ marginTop: 8 }}>
+              <button className="btn-ghost" onClick={saveDemo}>Save as cached demo</button>
+              {saved && <span className="muted">{saved}</span>}
+            </div>
+          )}
           <p className="tiny muted">Verdicts use a fixed rubric: the model only labels each source; the score is computed in code.</p>
         </details>
       </section>
