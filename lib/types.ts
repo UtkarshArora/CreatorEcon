@@ -9,6 +9,7 @@ export interface ApiCall {
   ok: boolean;
   results?: number;
   cached?: boolean;
+  provider?: string; // for LLM calls: provider and model
 }
 
 export interface Extraction {

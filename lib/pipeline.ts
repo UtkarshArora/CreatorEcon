@@ -15,7 +15,7 @@ export async function runCheck(input: string, emit: Emit, opts: { force?: boolea
   const you = new YouClient(key);
   const llmCalls: ApiCall[] = [];
   const warnings: string[] = [];
-  if (!llmAvailable()) warnings.push("No LLM key configured: using rule-based extraction and scoring.");
+  if (!llmAvailable()) warnings.push("No LLM configured: using rule-based extraction and scoring.");
 
   const step = (id: string, label: string, status: "running" | "done" | "error", note?: string) =>
     emit({ type: "step", id, label, status, note });

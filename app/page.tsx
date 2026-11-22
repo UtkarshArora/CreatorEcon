@@ -36,6 +36,25 @@ function saveHistory(h: HistoryItem[]) {
   } catch {}
 }
 
+type InboxItem = { uid: number; from: string; subject: string; date: string | null; input: string; status: "queued" | "checking" | "done" | "error"; report?: Report; error?: string };
+
+// Runs a check and returns only the final report (used for inbox batch checks).
+async function checkToReport(input: string): Promise<Report> {
+  const res = await fetch("/api/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ input }) });
+  if (!res.ok || !res.body) throw new Error(`Request failed (${res.status})`);
+  const text = await res.text();
+  let report: Report | null = null;
+  let err: string | null = null;
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    const ev = JSON.parse(line) as StreamEvent;
+    if (ev.type === "report") report = ev.data;
+    if (ev.type === "error") err = ev.message;
+  }
+  if (!report) throw new Error(err ?? "No report returned");
+  return report;
+}
+
 export default function Home() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -47,6 +66,53 @@ export default function Home() {
   const [demos, setDemos] = useState<{ name: string; brand: string; verdict: string }[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const resultRef = useRef<HTMLDivElement>(null);
+  const [inbox, setInbox] = useState<InboxItem[] | null>(null);
+  const [inboxMsg, setInboxMsg] = useState<string | null>(null);
+  const [inboxBusy, setInboxBusy] = useState(false);
+
+  async function checkInbox() {
+    setInboxBusy(true);
+    setInboxMsg("Reading unread emails…");
+    setInbox(null);
+    try {
+      const res = await fetch("/api/inbox");
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || "Could not read the inbox");
+      const items: InboxItem[] = j.emails.map((e: Omit<InboxItem, "status">) => ({ ...e, status: "queued" }));
+      setInbox(items);
+      setInboxMsg(items.length ? `${items.length} unread email(s) in ${j.account}` : `No unread emails in ${j.account}`);
+      // Two at a time keeps it quick without hammering the APIs.
+      let next = 0;
+      const update = (uid: number, patch: Partial<InboxItem>) => setInbox((cur) => cur?.map((x) => (x.uid === uid ? { ...x, ...patch } : x)) ?? cur);
+      const worker = async () => {
+        while (next < items.length) {
+          const it = items[next++];
+          update(it.uid, { status: "checking" });
+          try {
+            const r = await checkToReport(it.input);
+            update(it.uid, { status: "done", report: r });
+            remember(r);
+          } catch (e) {
+            update(it.uid, { status: "error", error: (e as Error).message });
+          }
+        }
+      };
+      await Promise.all([worker(), worker()]);
+    } catch (e) {
+      setInboxMsg((e as Error).message);
+    } finally {
+      setInboxBusy(false);
+    }
+  }
+
+  function openReport(r: Report) {
+    reset();
+    setInput(r.input);
+    setExtraction(r.extraction);
+    setIdentity(r.identity);
+    setReport(r);
+    setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+  }
 
   useEffect(() => {
     setHistory(loadHistory());
@@ -188,6 +254,32 @@ export default function Home() {
             {busy ? "Checking…" : "Run background check"}
           </button>
         </div>
+        <div className="row tiny muted" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+          <button className="btn-ghost" onClick={checkInbox} disabled={inboxBusy} type="button">
+            {inboxBusy ? "Checking inbox…" : "✉ Check my inbox"}
+          </button>
+          {inboxMsg ?? "Scan unread sponsorship emails in your connected inbox."}
+        </div>
+        {inbox && inbox.length > 0 && (
+          <div>
+            {inbox.map((it) => (
+              <div key={it.uid} className="flag" style={{ alignItems: "center", flexWrap: "wrap" }}>
+                {it.report ? (
+                  <span className={`score s${it.report.verdict === "green" ? 0 : it.report.verdict === "yellow" ? 2 : 3}`}>
+                    {it.report.verdictKind === "scam" ? "scam" : it.report.verdictKind === "thin" ? "no info" : it.report.verdict}
+                  </span>
+                ) : (
+                  <span className={`dot ${it.status === "checking" ? "running" : it.status === "error" ? "error" : ""}`} />
+                )}
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <div className="small"><strong>{it.subject}</strong></div>
+                  <div className="tiny muted">{it.from}{it.report ? ` · ${it.report.headline}` : it.error ? ` · ${it.error}` : it.status === "checking" ? " · checking…" : ""}</div>
+                </div>
+                {it.report && <button className="btn-ghost" onClick={() => openReport(it.report!)}>Open</button>}
+              </div>
+            ))}
+          </div>
+        )}
         {demos.length > 0 && (
           <div className="row tiny muted">
             Cached demo runs:
@@ -269,7 +361,7 @@ function ReportView({ report, onForce }: { report: Report; onForce: () => void }
           <span className="badge"><span className="light" />{kindLabel}</span>
           <span className="tiny muted">
             {r.mode === "cached" ? "Cached run · " : r.mode === "partial" ? "Partial results · " : ""}
-            {(r.durationMs / 1000).toFixed(1)}s · {r.calls.filter((c) => c.endpoint !== "LLM").length} You.com calls
+            {(r.durationMs / 1000).toFixed(1)}s · {r.calls.filter((c) => c.endpoint !== "LLM" || c.provider?.startsWith("You.com")).length} You.com calls
           </span>
         </div>
         <h2>{r.headline}</h2>
@@ -333,7 +425,7 @@ function ReportView({ report, onForce }: { report: Report; onForce: () => void }
             <tbody>
               {r.calls.map((c, i) => (
                 <tr key={i}>
-                  <td className="ep">{c.endpoint === "LLM" ? "LLM" : `You.com ${c.endpoint}`}</td>
+                  <td className="ep">{c.endpoint === "LLM" ? c.provider ?? "LLM" : `You.com ${c.endpoint}`}</td>
                   <td>{c.label}{!c.ok && <span style={{ color: "var(--red)" }}> (failed)</span>}</td>
                   <td>{c.results ?? "–"}</td>
                   <td>{(c.ms / 1000).toFixed(1)}s</td>

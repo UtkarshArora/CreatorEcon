@@ -6,6 +6,7 @@ Built at the You.com Creator Economy Hack (Creator Business track).
 
 ## How it works
 
+0. **Or check your inbox.** "Check my inbox" reads unread emails from a dedicated Gmail over IMAP (app password, no OAuth, messages are not marked read) and runs each one through the same check.
 1. **Read the deal.** An LLM extracts the brand, sender address, offer and payment terms (rule-based fallback if no LLM key).
 2. **Is the email real?** You.com Search finds the brand's official site. The sender domain is compared with it (free-mail, lookalike or unrelated domain), You.com Search looks for scam reports on the sender domain and past impersonation of the brand, and rules + LLM flag scam patterns in the text (upfront fees, downloads, Telegram/WhatsApp, account codes, urgency). A likely scam returns a red **Possible scam** verdict straight away.
 3. **Parallel risk checks** with You.com Search: Reddit reports of unpaid creators, payment complaints, lawsuits / FTC / recalls (3-year window), layoffs and money trouble (past year), recent backlash (past year).
@@ -26,13 +27,14 @@ Built at the You.com Creator Economy Hack (Creator Business track).
 | Contents (`POST ydc-index.io/v1/contents`) | Full text of the top risk sources, quoted in the verdict card |
 | Answer (`POST api.you.com/v1/answer`) | Cited brand overview |
 | Research (`POST api.you.com/v1/research`) | Fallback overview if Answer fails |
+| Inference Router (`POST api.you.com/v1/chat/completions`) | LLM steps: deal extraction, scam-phrase review, official-site pick, source classification (Anthropic as fallback) |
 
 Every report shows a "How this was checked" table listing each call, its purpose, result count and latency.
 
 ## Run it
 
 ```bash
-cp .env.example .env.local   # add YDC_API_KEY (and optionally ANTHROPIC_API_KEY)
+cp .env.example .env.local   # add YDC_API_KEY; optional ANTHROPIC_API_KEY, IMAP_USER, IMAP_APP_PASSWORD
 npm install
 npm run dev                  # http://localhost:3000
 ```
