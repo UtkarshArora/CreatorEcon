@@ -131,17 +131,18 @@ export async function classifyEvidence(
   site: OfficialSite,
   calls: ApiCall[]
 ): Promise<Evidence[]> {
-  const items = hits.slice(0, 40).map((h, i) => ({
+  const items = hits.slice(0, 32).map((h, i) => ({
     id: `e${i}`,
     category: h.category,
     title: h.r.title,
     url: h.r.url,
     date: h.r.page_age ?? null,
-    snippet: (h.r.description || h.r.snippets?.[0] || h.r.contents?.highlights?.[0] || "").slice(0, 400),
-    passage: passages.get(h.r.url),
+    snippet: (h.r.description || h.r.snippets?.[0] || h.r.contents?.highlights?.[0] || "").slice(0, 280),
+    passage: passages.get(h.r.url)?.slice(0, 300),
   }));
 
-  const llm = await llmJson<{ items: { id: string; aboutBrand: boolean; severity: number; claim: string; category?: CategoryId; issueType?: IssueType; story?: string; year?: number | null }[] }>(
+  type Labeled = { items: { id: string; aboutBrand: boolean; severity: number; claim: string; category?: CategoryId; issueType?: IssueType; story?: string; year?: number | null }[] };
+  const classifyChunk = (chunk: typeof items) => llmJson<Labeled>(
     `You vet brands for content creators. For each search result decide:
 - aboutBrand: true only if it is about THIS company (match the official domain and description; reject companies, people or products that merely share the name).
 - severity: 0 = not a risk / irrelevant / positive, 1 = minor or old/resolved, 2 = caution (credible complaint, ongoing issue), 3 = serious (multiple non-payment reports, FTC action, recall, major lawsuit, bankruptcy) .
@@ -163,12 +164,17 @@ Results older than 2 years should rarely be above 1. Return {"items":[...]} with
       officialDomain: site.domain,
       about: site.about,
       today: new Date().toISOString().slice(0, 10),
-      results: items,
+      results: chunk,
     }),
     calls,
-    "classify evidence",
-    4000
+    `classify evidence ${chunk[0]?.id ?? ""}`,
+    2500
   );
+  // Small parallel batches: faster, less likely to time out or truncate. A failed batch falls back to rules.
+  const chunks: (typeof items)[] = [];
+  for (let i = 0; i < items.length; i += 8) chunks.push(items.slice(i, i + 8));
+  const results = await Promise.all(chunks.map((c) => classifyChunk(c)));
+  const llm = { items: results.flatMap((r) => r?.items ?? []) };
   const byId = new Map((llm?.items ?? []).map((x) => [x.id, x]));
 
   const classified: Evidence[] = items.map((it) => {

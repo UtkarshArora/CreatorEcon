@@ -27,7 +27,7 @@ Built at the You.com Creator Economy Hack (Creator Business track).
 | Contents (`POST ydc-index.io/v1/contents`) | Full text of the top risk sources, quoted in the verdict card |
 | Answer (`POST api.you.com/v1/answer`) | Cited brand overview |
 | Research (`POST api.you.com/v1/research`) | Fallback overview if Answer fails |
-| Inference Router (`POST api.you.com/v1/chat/completions`) | LLM steps: deal extraction, scam-phrase review, official-site pick, source classification (Anthropic as fallback) |
+| Inference Router (`POST api.you.com/v1/chat/completions`) | Optional (`YDC_LLM_ROUTER=1`): LLM steps for deal extraction, scam-phrase review, official-site pick and source classification. Anthropic is the default and the fallback |
 
 Every report shows a "How this was checked" table listing each call, its purpose, result count and latency.
 

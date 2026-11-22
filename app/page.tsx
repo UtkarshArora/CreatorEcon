@@ -432,7 +432,10 @@ function ReportView({ report, onForce }: { report: Report; onForce: () => void }
               {r.calls.map((c, i) => (
                 <tr key={i}>
                   <td className="ep">{c.endpoint === "LLM" ? c.provider ?? "LLM" : `You.com ${c.endpoint}`}</td>
-                  <td>{c.label}{!c.ok && <span style={{ color: "var(--red)" }}> (failed)</span>}</td>
+                  <td>
+                    {c.label}
+                    {!c.ok && <span style={{ color: "var(--red)" }}> (failed{c.error ? `: ${c.error}` : ""})</span>}
+                  </td>
                   <td>{c.results ?? "–"}</td>
                   <td>{(c.ms / 1000).toFixed(1)}s</td>
                 </tr>

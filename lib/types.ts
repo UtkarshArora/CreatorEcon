@@ -10,6 +10,7 @@ export interface ApiCall {
   results?: number;
   cached?: boolean;
   provider?: string; // for LLM calls: provider and model
+  error?: string; // error text when ok is false
 }
 
 export interface Extraction {

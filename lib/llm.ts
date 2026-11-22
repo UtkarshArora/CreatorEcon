@@ -3,7 +3,7 @@
 import type { ApiCall } from "./types";
 
 export function llmAvailable() {
-  return Boolean(process.env.YDC_API_KEY || process.env.ANTHROPIC_API_KEY);
+  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.YDC_API_KEY);
 }
 
 const ROUTER_MODEL = () => process.env.YDC_LLM_MODEL || "kimi-k3";
@@ -50,7 +50,7 @@ async function viaRouter(system: string, user: string, maxTokens: number): Promi
 }
 
 async function viaAnthropic(system: string, user: string, maxTokens: number): Promise<string> {
-  return withTimeout(30000, async (signal) => {
+  return withTimeout(25000, async (signal) => {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -62,7 +62,8 @@ async function viaAnthropic(system: string, user: string, maxTokens: number): Pr
       signal,
     });
     if (!res.ok) throw new Error(`anthropic ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    const json = (await res.json()) as { content: { type: string; text?: string }[] };
+    const json = (await res.json()) as { content: { type: string; text?: string }[]; stop_reason?: string };
+    if (json.stop_reason === "max_tokens") throw new Error("anthropic: output cut off at max_tokens");
     return json.content.find((c) => c.type === "text")?.text ?? "";
   });
 }
@@ -75,21 +76,30 @@ export async function llmJson<T>(
   maxTokens = 2000
 ): Promise<T | null> {
   const sys = system + "\n\nRespond with a single JSON object only. No prose, no code fences.";
+  // Anthropic is the default; the You.com Inference Router is opt-in (YDC_LLM_ROUTER=1) and goes first when on.
   const providers: { name: string; model: string; run: () => Promise<string> }[] = [];
-  if (process.env.YDC_API_KEY && process.env.YDC_LLM_DISABLED !== "1")
-    providers.push({ name: "You.com Inference Router", model: ROUTER_MODEL(), run: () => viaRouter(sys, user, maxTokens) });
+  const router = { name: "You.com Inference Router", model: ROUTER_MODEL(), run: () => viaRouter(sys, user, maxTokens) };
+  if (process.env.YDC_API_KEY && process.env.YDC_LLM_ROUTER === "1") providers.push(router);
   if (process.env.ANTHROPIC_API_KEY)
     providers.push({ name: "Anthropic", model: CLAUDE_MODEL(), run: () => viaAnthropic(sys, user, maxTokens) });
+  if (!providers.length && process.env.YDC_API_KEY) providers.push(router);
 
   for (const p of providers) {
     const t0 = Date.now();
     try {
-      const parsed = parseJson<T>(await p.run());
+      const raw = await p.run();
+      let parsed: T;
+      try {
+        parsed = parseJson<T>(raw);
+      } catch {
+        throw new Error(`bad JSON from model: ${raw.slice(0, 80)}`);
+      }
       calls.push({ endpoint: "LLM", label, ms: Date.now() - t0, ok: true, provider: `${p.name} · ${p.model}` });
       return parsed;
     } catch (e) {
       console.error("llm error", p.name, label, e);
-      calls.push({ endpoint: "LLM", label, ms: Date.now() - t0, ok: false, provider: `${p.name} · ${p.model}` });
+      const msg = (e as Error).name === "AbortError" ? "timed out" : (e as Error).message;
+      calls.push({ endpoint: "LLM", label, ms: Date.now() - t0, ok: false, provider: `${p.name} · ${p.model}`, error: msg.slice(0, 160) });
     }
   }
   return null;

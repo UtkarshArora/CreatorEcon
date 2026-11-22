@@ -50,7 +50,8 @@ export class YouClient {
       this.calls.push({ endpoint, label, ms: Date.now() - t0, ok: true, results: count(json) });
       return json;
     } catch (e) {
-      this.calls.push({ endpoint, label, ms: Date.now() - t0, ok: false });
+      const msg = (e as Error).name === "AbortError" ? "timed out" : (e as Error).message;
+      this.calls.push({ endpoint, label, ms: Date.now() - t0, ok: false, error: msg.slice(0, 160) });
       throw e;
     } finally {
       clearTimeout(timer);

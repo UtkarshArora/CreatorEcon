@@ -89,6 +89,9 @@ export async function runCheck(input: string, emit: Emit, opts: { force?: boolea
   step("score", "Scoring with the BrandCheck rubric", "running");
   const evidence = await classifyEvidence(hits, passages, extraction, site, llmCalls);
   const categories = buildCategories(evidence, searched);
+  const classifyLabels = new Set(llmCalls.filter((c) => c.label.startsWith("classify")).map((c) => c.label));
+  const failedBatches = [...classifyLabels].filter((l) => !llmCalls.some((c) => c.label === l && c.ok));
+  if (failedBatches.length) warnings.push(`AI scoring failed for ${failedBatches.length} batch(es); those sources were scored with keyword rules.`);
   const mentions = hits.filter((h) => brandMentioned(h.r, extraction.brand)).length;
   const overview = await overviewP;
   const d = decide(extraction, identity, categories, mentions);
