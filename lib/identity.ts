@@ -64,7 +64,17 @@ If the sender's email domain matches one of the candidates, that is strong evide
   );
   const b = norm(ex.brand);
   const byName = candidates.find((c) => norm(domainOf(c.url) ?? "").includes(b.slice(0, Math.max(4, Math.min(b.length, 8)))));
-  const senderMatch = ex.senderDomain ? candidates.find((c) => root(domainOf(c.url) ?? "") === root(ex.senderDomain!)) : undefined;
+  let senderMatch = ex.senderDomain ? candidates.find((c) => root(domainOf(c.url) ?? "") === root(ex.senderDomain!)) : undefined;
+  // Sender domain is exactly the brand name (grammarly.com for Grammarly) but search ranked another site first:
+  // confirm the domain is a real indexed site about the brand before treating it as official.
+  if (!senderMatch && ex.senderDomain && !FREEMAIL.has(ex.senderDomain) && norm(root(ex.senderDomain).split(".")[0]) === norm(ex.brand)) {
+    try {
+      const own = await you.search(ex.brand, { count: 3, include_domains: [root(ex.senderDomain)], label: "confirm sender domain" });
+      senderMatch = own.find((r) => `${r.title} ${r.description ?? ""}`.toLowerCase().includes(ex.brand.toLowerCase()));
+    } catch {
+      /* fall through */
+    }
+  }
   const chosen = senderMatch ? senderMatch : picked && picked.index !== null && candidates[picked.index] ? candidates[picked.index] : byName ?? (picked ? null : candidates[0]);
   if (!chosen) return { domain: null, url: null, title: null, about: picked?.about ?? null };
   return {
@@ -90,7 +100,8 @@ export async function checkIdentity(
   if (sender) {
     if (FREEMAIL.has(sender)) {
       senderStatus = "freemail";
-      score += site.domain ? 30 : 15;
+      // A free address claiming to be a company with a real domain is a strong signal.
+      score += site.domain ? 50 : 15;
       flags.push({
         label: `Sent from a free ${sender} address`,
         detail: site.domain
@@ -133,6 +144,11 @@ export async function checkIdentity(
       const k = norm(f.label).slice(0, 12);
       if (seen.has(k)) continue;
       seen.add(k);
+      // From the verified company domain, soft signals (urgency, high pay) are informational only.
+      if (senderStatus === "verified" && f.severity === 2) {
+        flags.push({ ...f, severity: 1 });
+        continue;
+      }
       flags.push(f);
       score += f.severity === 3 ? 30 : 10;
     }

@@ -11,7 +11,11 @@ Built at the You.com Creator Economy Hack (Creator Business track).
 3. **Parallel risk checks** with You.com Search: Reddit reports of unpaid creators, payment complaints, lawsuits / FTC / recalls (3-year window), layoffs and money trouble (past year), recent backlash (past year).
 4. **Read the sources.** You.com Contents pulls the full text of the top risk pages so flags can quote the source.
 5. **Cited overview.** You.com Answer writes a short cited summary of the brand (Research API as a fallback).
-6. **Fixed rubric.** The LLM only labels each source (is it about this company? severity 0–3? neutral one-line claim). The verdict is computed in code: any serious category → red; any caution → yellow; no official site or too few results → yellow **Not enough public info**; otherwise green. Same-name companies are filtered out, results older than 2 years are down-weighted, and a single forum post can't make a brand red on its own.
+6. **Fixed rubric.** The LLM only labels each source: is it about this company (same-name companies are filtered out), severity 0–3, does it directly affect creators, what year it happened, and a neutral one-line claim. The verdict is computed in code:
+   - **Red** only for scam signals, or recent (≤18 months), creator-relevant, sourced problems: unpaid-creator reports from 2+ independent sites or a news report, or a serious legal/FTC/recall finding from a non-forum source.
+   - **Yellow** for recent caution-level issues, an unverified sender, or **Not enough public info** (no official site or too few results).
+   - **Green** otherwise. Old news and ordinary big-company lawsuits, layoffs or criticism are shown for context but don't move the verdict, so established brands don't come back red.
+   - Every flag cites a link or a quote from the pasted email.
 
 ## You.com endpoints
 

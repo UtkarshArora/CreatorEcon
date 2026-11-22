@@ -5,25 +5,70 @@ import { CATEGORY_META } from "./checks";
 
 const ORDER: CategoryId[] = ["payment", "legal", "finance", "backlash"];
 
+const FORUM = /reddit\.com|quora\.com|forum|community\.|trustpilot|sitejabber|complaintsboard/;
+const RECENT_MONTHS = 18;
+
+function ageMonths(e: Evidence): number | null {
+  const t = Date.parse(e.date ?? "");
+  if (!Number.isNaN(t)) return (Date.now() - t) / (1000 * 60 * 60 * 24 * 30.4);
+  if (e.year) return (new Date().getFullYear() - e.year) * 12;
+  return null;
+}
+const hostOf = (u: string) => {
+  try {
+    return new URL(u).hostname.replace(/^www\./, "");
+  } catch {
+    return u;
+  }
+};
+
+// Apply rubric caps to one source. Returns the severity the verdict may use and why it was capped.
+export function countedSeverity(e: Evidence): { counted: Evidence["severity"]; note?: string } {
+  let s = e.severity;
+  let note: string | undefined;
+  if (s <= 0) return { counted: 0 };
+  const age = ageMonths(e);
+  if (age === null || age > RECENT_MONTHS) {
+    if (s > 1) note = age === null ? "Undated, shown for context only" : "Older than 18 months, shown for context only";
+    s = Math.min(s, 1) as Evidence["severity"];
+  }
+  if (!e.creatorImpact && s > 1) {
+    note = "Doesn't affect creators directly, shown for context only";
+    s = 1;
+  }
+  return { counted: s, note };
+}
+
+// Red needs recent, creator-relevant, credible evidence:
+// - payment: 2+ independent sites at caution or worse, or a serious report from a non-forum source
+// - legal: a serious report from a non-forum source
+// Money trouble and backlash can raise caution (yellow) but never make a brand red on their own.
 export function buildCategories(evidence: Evidence[], searched: Record<CategoryId, string[]>): CategoryResult[] {
   return ORDER.map((id) => {
     const ev = evidence
       .filter((e) => e.category === id && e.aboutBrand && e.severity > 0)
-      .sort((a, b) => b.severity - a.severity || (Date.parse(b.date ?? "") || 0) - (Date.parse(a.date ?? "") || 0));
-    // Two independent caution-level sources about payment count as serious.
-    let score = (ev[0]?.severity ?? 0) as CategoryResult["score"];
-    const strong = ev.filter((e) => e.severity >= 2).length;
-    if (score === 2 && strong >= 3) score = 3;
-    // A single forum post is not enough for a red flag on its own.
-    if (score === 3 && strong < 2 && /reddit\.com|quora\.com|forum/.test(ev[0].url)) score = 2;
+      .map((e) => ({ ...e, ...countedSeverity(e) }))
+      .sort((a, b) => (b.counted ?? 0) - (a.counted ?? 0) || b.severity - a.severity || (Date.parse(b.date ?? "") || 0) - (Date.parse(a.date ?? "") || 0));
+    const strong = ev.filter((e) => (e.counted ?? 0) >= 2);
+    const sites = new Set(strong.map((e) => hostOf(e.url)));
+    const seriousNews = strong.some((e) => e.counted === 3 && !FORUM.test(e.url));
+    let score: CategoryResult["score"] = 0;
+    if (strong.length) score = 2;
+    else if (ev.length) score = 1;
+    if (id === "payment" && strong.length && (sites.size >= 2 || seriousNews)) score = 3;
+    if (id === "legal" && seriousNews) score = 3;
+    if (id === "finance" || id === "backlash") {
+      // yellow only with a serious recent event, or 2+ independent sites
+      score = strong.some((e) => e.counted === 3) || sites.size >= 2 ? 2 : ev.length ? 1 : 0;
+    }
     const summary =
       score === 0
         ? "Nothing concerning found in live results."
         : score === 1
-          ? "Minor or older mentions only."
+          ? "Only older, minor or non-creator issues. Shown for context."
           : score === 2
-            ? `${ev.filter((e) => e.severity >= 2).length} source(s) worth reading before you sign.`
-            : `Serious: ${ev.filter((e) => e.severity >= 2).length} source(s) report problems.`;
+            ? `${strong.length} recent source(s) worth reading before you sign.`
+            : `Serious: ${strong.length} recent source(s) from ${sites.size} site(s) report problems.`;
     return { id, name: CATEGORY_META[id].name, score, summary, evidence: ev.slice(0, 5), searched: searched[id] };
   });
 }
@@ -46,7 +91,7 @@ export function decide(
   }
   const serious = categories.filter((c) => c.score === 3);
   const caution = categories.filter((c) => c.score === 2);
-  const idCaution = identity.flags.filter((f) => f.severity >= 2);
+  const idCaution = identity.flags.filter((f) => f.severity >= 2 && (f.sourceUrl || f.fromEmail));
 
   let verdict: Verdict = "green";
   let kind: Report["verdictKind"] = "clean";

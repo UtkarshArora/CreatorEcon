@@ -387,6 +387,7 @@ function FlagRow({ f }: { f: Flag }) {
       <div>
         <strong className="small">{f.label}</strong>
         <div className="small muted">{f.detail}</div>
+        {f.fromEmail && !f.sourceUrl && <span className="tiny muted">Source: quoted from the pasted email</span>}
         {f.sourceUrl && (
           <a className="src" href={f.sourceUrl} target="_blank" rel="noreferrer">↗ {f.sourceTitle?.slice(0, 70) || host(f.sourceUrl)}</a>
         )}
@@ -413,6 +414,7 @@ function EvidenceRow({ e }: { e: Evidence }) {
   return (
     <div className="ev">
       <p className="small">{e.claim}</p>
+      {e.note && <p className="tiny muted" style={{ margin: "2px 0" }}>{e.note}</p>}
       {e.passage && <p className="quote">“{e.passage.slice(0, 220)}{e.passage.length > 220 ? "…" : ""}”</p>}
       <a className="src" href={e.url} target="_blank" rel="noreferrer">
         ↗ {host(e.url)}{when(e.date) ? ` · ${when(e.date)}` : ""}

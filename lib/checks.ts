@@ -73,6 +73,8 @@ export async function runCategorySearches(you: YouClient, ex: Extraction) {
 const RISK_WORDS = /lawsuit|sued|class action|ftc|settle|recall|fined|penalt|never paid|unpaid|didn'?t pay|not paid|late pay|scam|fraud|bankrupt|layoff|laid off|shut(ting)? down|boycott|backlash|controvers|investigat|warning letter|deceptive/i;
 const SERIOUS_WORDS = /never paid|didn'?t pay|unpaid|ftc (settle|order|complaint|action)|class action|recall|bankrupt|fraud|scam|fined|criminal|chapter (7|11)/i;
 
+const CREATOR_IMPACT = /ftc .{0,40}(influencer|endorse|deceptive|disclos)|recall|bankrupt|chapter (7|11)|shut(ting)? down|fraud|scam|(creator|influencer)s? .{0,30}(unpaid|not paid|never paid)/i;
+
 const textOf = (r: WebResult) => `${r.title} ${r.description ?? ""} ${(r.snippets ?? []).join(" ")} ${(r.contents?.highlights ?? []).join(" ")}`;
 
 export function brandMentioned(r: WebResult, brand: string) {
@@ -140,10 +142,12 @@ export async function classifyEvidence(
     passage: passages.get(h.r.url),
   }));
 
-  const llm = await llmJson<{ items: { id: string; aboutBrand: boolean; severity: number; claim: string; category?: CategoryId }[] }>(
+  const llm = await llmJson<{ items: { id: string; aboutBrand: boolean; severity: number; claim: string; category?: CategoryId; creatorImpact?: boolean; year?: number | null }[] }>(
     `You vet brands for content creators. For each search result decide:
 - aboutBrand: true only if it is about THIS company (match the official domain and description; reject companies, people or products that merely share the name).
 - severity: 0 = not a risk / irrelevant / positive, 1 = minor or old/resolved, 2 = caution (credible complaint, ongoing issue), 3 = serious (multiple non-payment reports, FTC action, recall, major lawsuit, bankruptcy) .
+- creatorImpact: true only if it would directly affect a creator promoting or being paid by this company: brands or platforms not paying / paying late creators or influencers, FTC or regulator action about endorsements, influencer disclosure or deceptive advertising, a recall or safety ban of products creators would promote, fraud or scam findings, bankruptcy or shutdown. Ordinary consumer, privacy, patent, employment or securities lawsuits, customer-service complaints, layoffs and product criticism are false.
+- year: the year the reported event happened (number), or null if unclear.
 - claim: one neutral sentence stating what the source reports, attributed ("Reddit users report...", "Reuters reports..."). Never state allegations as fact.
 - category: one of payment, legal, finance, backlash (keep the given one unless clearly wrong).
 Results older than 2 years should rarely be above 1. Return {"items":[...]} with every id.`,
@@ -169,6 +173,8 @@ Results older than 2 years should rarely be above 1. Return {"items":[...]} with
         aboutBrand: Boolean(c.aboutBrand),
         severity: Math.max(0, Math.min(3, Math.round(c.severity))) as Evidence["severity"],
         claim: c.claim || it.title,
+        creatorImpact: Boolean(c.creatorImpact),
+        year: typeof c.year === "number" ? c.year : null,
       };
     }
     // Rule-based fallback.
@@ -177,7 +183,8 @@ Results older than 2 years should rarely be above 1. Return {"items":[...]} with
     let sev: number = !about ? 0 : SERIOUS_WORDS.test(text) ? 3 : RISK_WORDS.test(text) ? 2 : 0;
     const age = monthsAgo(it.date);
     if (age !== null && age > 24 && sev > 0) sev -= 1;
-    return { ...it, aboutBrand: about, severity: sev as Evidence["severity"], claim: it.title };
+    const impact = it.category === "payment" ? /creator|influencer|ambassador|sponsor|affiliate/i.test(text) && sev > 0 : CREATOR_IMPACT.test(text);
+    return { ...it, aboutBrand: about, severity: sev as Evidence["severity"], claim: it.title, creatorImpact: impact, year: null };
   });
 }
 

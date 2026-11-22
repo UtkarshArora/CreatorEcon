@@ -26,6 +26,7 @@ export interface Flag {
   severity: 1 | 2 | 3; // 1 info, 2 caution, 3 serious
   sourceUrl?: string;
   sourceTitle?: string;
+  fromEmail?: boolean; // evidence is a quote from the pasted email itself
 }
 
 export interface Identity {
@@ -55,6 +56,10 @@ export interface Evidence {
   aboutBrand: boolean;
   severity: 0 | 1 | 2 | 3;
   claim: string;
+  creatorImpact: boolean; // directly affects a creator working with / paid by the brand
+  year: number | null; // year of the reported event
+  counted?: 0 | 1 | 2 | 3; // severity after rubric caps (what the verdict used)
+  note?: string; // why it was capped
 }
 
 export interface CategoryResult {
